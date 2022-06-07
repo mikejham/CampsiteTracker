@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
 #!/usr/bin/env python3
 
+import time
 import json
 import logging
 import sys
 from collections import defaultdict
 from datetime import datetime, timedelta
 from itertools import count, groupby
-
+import random
 from dateutil import rrule
+import winsound
 
 from clients.recreation_client import RecreationClient
 from enums.date_format import DateFormat
@@ -114,6 +116,7 @@ def get_num_available_sites(
         LOG.debug("Setting number of nights to {}.".format(nights))
 
     available_dates_by_campsite_id = defaultdict(list)
+    sites = []
     for site, availabilities in park_information.items():
         # List of dates that are in the desired range for this site.
         desired_available = []
@@ -132,6 +135,7 @@ def get_num_available_sites(
 
         if appropriate_consecutive_ranges:
             num_available += 1
+            sites += site
             LOG.debug("Available site {}: {}".format(num_available, site))
 
         for r in appropriate_consecutive_ranges:
@@ -140,7 +144,7 @@ def get_num_available_sites(
                 {"start": start, "end": end}
             )
 
-    return num_available, maximum, available_dates_by_campsite_id
+    return num_available, maximum, available_dates_by_campsite_id, sites
 
 
 def consecutive_nights(available, nights):
@@ -194,10 +198,10 @@ def check_park(
         )
     )
     park_name = RecreationClient.get_park_name(park_id)
-    current, maximum, availabilities_filtered = get_num_available_sites(
+    current, maximum, availabilities_filtered, sites = get_num_available_sites(
         park_information, start_date, end_date, nights=nights
     )
-    return current, maximum, availabilities_filtered, park_name
+    return current, maximum, availabilities_filtered, park_name, sites
 
 
 def generate_human_output(
@@ -206,22 +210,25 @@ def generate_human_output(
     out = []
     has_availabilities = False
     for park_id, info in info_by_park_id.items():
-        current, maximum, available_dates_by_site_id, park_name = info
+        current, maximum, available_dates_by_site_id, park_name, sites = info
         if current:
-            emoji = Emoji.SUCCESS.value
+            winsound.Beep(3000, 200)
+            emoji = "Success!"
             has_availabilities = True
-        else:
-            emoji = Emoji.FAILURE.value
-
-        out.append(
-            "{emoji} {park_name} ({park_id}): {current} site(s) available out of {maximum} site(s)".format(
-                emoji=emoji,
-                park_name=park_name,
-                park_id=park_id,
-                current=current,
-                maximum=maximum,
+            sites = list(set(sites))
+            out.append(
+                "{emoji}{park_name} ({park_id}):\n\t\t{current}  site(s) available out of {maximum} site(s) {sites}\n".format(
+                    emoji=emoji,
+                    park_name=park_name,
+                    park_id=park_id,
+                    current=current,
+                    maximum=maximum,
+                    sites=sites,
+                )
             )
-        )
+        else:
+            emoji = ""
+        
 
         # Displays campsite ID and availability dates.
         if gen_campsite_info and available_dates_by_site_id:
@@ -264,27 +271,38 @@ def generate_json_output(info_by_park_id):
 
 
 def main(parks, json_output=False):
-    info_by_park_id = {}
-    for park_id in parks:
-        info_by_park_id[park_id] = check_park(
-            park_id,
-            args.start_date,
-            args.end_date,
-            args.campsite_type,
-            args.campsite_ids,
-            nights=args.nights,
-        )
+    while(True):
+        info_by_park_id = {}
+        for park_id in parks:
+            
+            x = random.randint(0, 3)
+            time.sleep(x)
+            print(f"Checking park {park_id}")
+            info_by_park_id[park_id] = check_park(
+                park_id,
+                args.start_date,
+                args.end_date,
+                args.campsite_type,
+                args.campsite_ids,
+                nights=args.nights,
+            )
+            
 
-    if json_output:
-        output, has_availabilities = generate_json_output(info_by_park_id)
-    else:
-        output, has_availabilities = generate_human_output(
-            info_by_park_id,
-            args.start_date,
-            args.end_date,
-            args.show_campsite_info,
-        )
-    print(output)
+            if json_output:
+                output, has_availabilities = generate_json_output(info_by_park_id)
+            else:
+                output, has_availabilities = generate_human_output(
+                    info_by_park_id,
+                    args.start_date,
+                    args.end_date,
+                    args.show_campsite_info,
+                )
+            if has_availabilities:
+                print(output)
+            else:
+                print("None available.")
+        r = random.randint(20, 60)
+        time.sleep(r)
     return has_availabilities
 
 
